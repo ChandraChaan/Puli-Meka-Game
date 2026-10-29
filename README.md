@@ -25,6 +25,24 @@ In villages the board is drawn with chalk on the floor or a stone verandah and p
 - Vibration and click feedback (can be turned off).
 - Screen-reader labels for every board point.
 
+## Install on Android
+
+Download `puli-meka.apk` from the [latest release](https://github.com/ChandraChaan/beryapp/releases/latest) and open it on your phone. If asked, allow your browser or file manager to install unknown apps.
+
+Every push builds a new APK with GitHub Actions (`.github/workflows/android-apk.yml`) and publishes it on the [Releases](https://github.com/ChandraChaan/beryapp/releases) page: builds from `main` become the latest release, builds from other branches are marked as pre-releases. You can also run the workflow by hand from the **Actions** tab.
+
+### Signing key (recommended)
+
+Without a key, each build is signed with a new throwaway debug key, so Android will not install a new build over an old one; uninstall first. To sign every build with the same key:
+
+1. Create a key once:
+   `keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias pulimeka`
+2. In the repository settings, under **Secrets and variables → Actions**, add:
+   - `ANDROID_KEYSTORE_BASE64`: output of `base64 -w0 release.jks`
+   - `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`pulimeka`), `ANDROID_KEY_PASSWORD`
+
+Keep `release.jks` safe and never commit it.
+
 ## Running
 
 ```sh
