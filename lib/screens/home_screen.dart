@@ -8,6 +8,7 @@ import '../main.dart';
 import '../theme.dart';
 import '../widgets/board_view.dart';
 import '../widgets/decorations.dart';
+import 'about_screen.dart';
 import 'game_screen.dart';
 import 'rules_screen.dart';
 import 'stats_screen.dart';
@@ -31,6 +32,11 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     _LanguageToggle(settings: settings),
                     const Spacer(),
+                    IconButton(
+                      tooltip: s.aboutApp,
+                      icon: const Icon(Icons.info_outline_rounded),
+                      onPressed: () => openAbout(context),
+                    ),
                     IconButton(
                       tooltip: s.settings,
                       icon: const Icon(Icons.tune_rounded),
@@ -102,12 +108,13 @@ class HomeScreen extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 18),
-                          Text(
-                            'Made with ❤️ in Kadapa',
-                            style: TextStyle(
-                              color: AppColors.chalk.withValues(alpha: 0.5),
-                              fontSize: 12,
+                          TextButton(
+                            onPressed: () => openAbout(context),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.chalk.withValues(alpha: 0.6),
+                              textStyle: const TextStyle(fontSize: 12),
                             ),
+                            child: Text('${s.madeIn} · ${s.aboutApp}'),
                           ),
                         ],
                       ),
@@ -447,6 +454,10 @@ class _SideCard extends StatelessWidget {
   }
 }
 
+void openAbout(BuildContext context) {
+  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AboutScreen()));
+}
+
 Future<void> showSettingsSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
@@ -501,6 +512,17 @@ Future<void> showSettingsSheet(BuildContext context) {
                 ],
                 selected: {settings.captureTarget},
                 onSelectionChanged: (v) => settings.setCaptureTarget(v.first),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.info_outline_rounded),
+                title: Text(s.aboutApp, style: const TextStyle(fontWeight: FontWeight.w700)),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  final navigator = Navigator.of(context)..pop();
+                  navigator.push(MaterialPageRoute<void>(builder: (_) => const AboutScreen()));
+                },
               ),
             ],
           ),

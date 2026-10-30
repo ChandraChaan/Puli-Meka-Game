@@ -28,7 +28,7 @@ class RulesScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _Section(title: s.aboutTitle, child: Text(s.about, style: _body)),
+                      InfoSection(title: s.aboutTitle, child: Text(s.about, style: _body)),
                       Row(
                         children: [
                           Expanded(
@@ -56,11 +56,11 @@ class RulesScreen extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _Section(
+                      InfoSection(
                         title: s.rulesTitle,
                         child: _NumberedList(items: s.rules(settings.captureTarget)),
                       ),
-                      _Section(
+                      InfoSection(
                         title: s.tipsTitle,
                         child: _NumberedList(items: s.tips, bullet: '💡'),
                       ),
@@ -77,40 +77,6 @@ class RulesScreen extends StatelessWidget {
 }
 
 const _body = TextStyle(fontSize: 15, height: 1.5, color: AppColors.chalk);
-
-class _Section extends StatelessWidget {
-  final String title;
-  final Widget child;
-  const _Section({required this.title, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.chalk.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.chalk.withValues(alpha: 0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w900,
-              color: AppColors.turmeric,
-            ),
-          ),
-          const SizedBox(height: 10),
-          child,
-        ],
-      ),
-    );
-  }
-}
 
 class _NumberedList extends StatelessWidget {
   final List<String> items;
