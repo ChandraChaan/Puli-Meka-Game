@@ -151,6 +151,66 @@ class S {
           'Tigers: threaten two goats at once. The goats cannot cover both.',
         ];
 
+  String get aboutApp => _('About', 'గురించి');
+  String get aboutThisApp => _('About this app', 'ఈ యాప్ గురించి');
+  String version(String v) => _('Version $v', 'వెర్షన్ $v');
+  String get madeIn => _('Made with ❤️ in Kadapa', 'కడపలో ❤️ తో తయారైంది');
+  String get appIntro => _(
+      'A free, ad-free digital version of the game we grew up playing on village verandahs. '
+          'No account and no internet needed: just open it and play.',
+      'అరుగులపై ఆడుకున్న మన ఆటకు ఉచిత, ప్రకటనలు లేని డిజిటల్ రూపం. '
+          'ఖాతా అవసరం లేదు, ఇంటర్నెట్ అవసరం లేదు: తెరిచి ఆడండి.');
+  String get alsoKnownAs => _('Also known as', 'ఇతర పేర్లు');
+  List<(String, String)> get otherNames => [
+        (_('Aadu Puli Aattam', 'ఆడు పులి ఆట్టం'), _('Tamil Nadu', 'తమిళనాడు')),
+        (_('Aadu Huli', 'ఆడు హులి'), _('Karnataka', 'కర్ణాటక')),
+        (_('Bagh-Chal (a cousin)', 'బాఘ్-చాల్ (బంధువు ఆట)'), _('Nepal', 'నేపాల్')),
+      ];
+  String get featuresTitle => _('What\'s inside', 'ఇందులో ఏముంది');
+  List<String> get features => te
+      ? [
+          'కంప్యూటర్‌తో మూడు స్థాయిల్లో, మేకలుగా లేదా పులులుగా ఆడండి',
+          'ఒకే ఫోన్‌లో ఇద్దరు ఆటగాళ్ళు',
+          'సూచనలు, అపరిమిత వెనక్కి, ప్రమాద హెచ్చరికలు',
+          'పూర్తిగా తెలుగు, ఇంగ్లీష్‌లో',
+          'గణాంకాలు, వరుస విజయాలు',
+        ]
+      : [
+          'Play the computer as goats or tigers, at three levels',
+          'Pass-and-play for two on one phone',
+          'Hints, unlimited undo and danger warnings',
+          'Fully in Telugu and English',
+          'Statistics and win streaks',
+        ];
+  String get privacyTitle => _('Privacy', 'గోప్యత');
+  String get privacy => _(
+      'No ads, no tracking, no account. Your settings and statistics are stored only on this device '
+          'and are never sent anywhere.',
+      'ప్రకటనలు లేవు, ట్రాకింగ్ లేదు, ఖాతా లేదు. మీ సెట్టింగ్‌లు, గణాంకాలు ఈ పరికరంలో మాత్రమే ఉంటాయి, '
+          'ఎక్కడికీ పంపబడవు.');
+  String get linksTitle => _('Share & support', 'పంచుకోండి & సహాయం');
+  String get shareApp => _('Share with friends', 'స్నేహితులతో పంచుకోండి');
+  String get shareAppSub => _('Challenge someone to a game', 'ఎవరినైనా ఆటకు సవాలు చేయండి');
+  String shareMessage(String url) => _(
+      'Play Puli Meka (Tiger & Goats), the board game of Rayalaseema! Download: $url',
+      'రాయలసీమ ఆట పులి మేక ఆడండి! డౌన్‌లోడ్: $url');
+  String get latestVersion => _('Get the latest version', 'తాజా వెర్షన్ పొందండి');
+  String get latestVersionSub => _('Download the newest APK', 'కొత్త APK డౌన్‌లోడ్ చేయండి');
+  String get reportProblem => _('Report a problem or idea', 'సమస్య లేదా ఆలోచన తెలపండి');
+  String get reportProblemSub => _('Opens GitHub issues', 'GitHub issues తెరుస్తుంది');
+  String get sourceCode => _('Source code', 'సోర్స్ కోడ్');
+  String get sourceCodeSub => _('The whole app is open on GitHub', 'యాప్ మొత్తం GitHubలో ఉంది');
+  String get licenses => _('Open-source licences', 'ఓపెన్-సోర్స్ లైసెన్సులు');
+  String get creditsTitle => _('Credits', 'కృతజ్ఞతలు');
+  String get credits => _(
+      'Built with Flutter by ChandraChaan. Thanks to every grandparent who drew this board in chalk '
+          'and taught the next generation to play.',
+      'Flutterతో ChandraChaan రూపొందించారు. సుద్దతో ఈ బోర్డు గీసి తర్వాతి తరానికి ఆట నేర్పిన '
+          'ప్రతి తాతయ్య, అమ్మమ్మకు కృతజ్ఞతలు.');
+  String get linkFailed => _('Could not open the link', 'లింక్ తెరవలేకపోయాం');
+  String get linkCopied =>
+      _('Link copied. Paste it to a friend!', 'లింక్ కాపీ అయింది. స్నేహితులకు పంపండి!');
+
   String get about => te
       ? 'పులి మేక తరతరాలుగా రాయలసీమ, కడప గ్రామాల్లో ఆడే ఆట. అరుగులపై, నేలపై సుద్దతో లేదా పుల్లతో బోర్డు గీసి, రాళ్ళు, చింతగింజలతో ఆడతారు. ఇదే ఆటను తమిళనాడులో "ఆడు పులి ఆట్టం", కర్ణాటకలో "ఆడు హులి" అని పిలుస్తారు. ఇది ఓర్పు, ముందుచూపు నేర్పే ఆట.'
       : 'Puli Meka has been played for generations in the villages of Kadapa and Rayalaseema. The board is drawn with chalk or a stick on the floor or a stone verandah, and played with pebbles and tamarind seeds. The same game is called Aadu Puli Aattam in Tamil Nadu and Aadu Huli in Karnataka. It is a game of patience and foresight.';

@@ -88,6 +88,41 @@ class _ThoranamPainter extends CustomPainter {
   bool shouldRepaint(_ThoranamPainter old) => false;
 }
 
+/// A titled card of text used on the rules and about screens.
+class InfoSection extends StatelessWidget {
+  final String title;
+  final Widget child;
+  const InfoSection({super.key, required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.chalk.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.chalk.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w900,
+              color: AppColors.turmeric,
+            ),
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
 /// A faint grid of muggulu (kolam) dots behind a screen.
 class MugguluBackground extends StatelessWidget {
   final Widget child;
