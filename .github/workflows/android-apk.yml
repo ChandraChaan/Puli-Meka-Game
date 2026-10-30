@@ -1,7 +1,9 @@
 name: Android APK
 
 on:
+  # Branches only: a release tag pushed by hand should not build a second copy.
   push:
+    branches: ['**']
   workflow_dispatch:
 
 permissions:
