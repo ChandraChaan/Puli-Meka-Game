@@ -1,30 +1,41 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility that Flutter provides. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:beryapp/app_settings.dart';
+import 'package:beryapp/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:beryapp/main.dart';
+/// The board pulses forever, so settle by pumping a fixed time.
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(MyApp());
+  testWidgets('home screen opens a two player game', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(PuliMekaApp(settings: AppSettings.inMemory()));
+    await _settle(tester);
+    expect(find.text('పులి మేక'), findsOneWidget);
+    expect(find.text('Play vs Computer'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.ensureVisible(find.text('2 Players'));
+    await tester.tap(find.text('2 Players'));
+    await _settle(tester);
+    expect(find.textContaining('Place a goat'), findsOneWidget);
+    expect(find.text('Player 1'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('language switches to Telugu', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(PuliMekaApp(settings: AppSettings.inMemory()));
+    await tester.tap(find.text('తెలుగు'));
+    await _settle(tester);
+    expect(find.text('కంప్యూటర్‌తో ఆడండి'), findsOneWidget);
   });
 }
