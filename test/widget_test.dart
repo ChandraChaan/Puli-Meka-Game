@@ -1,5 +1,5 @@
-import 'package:beryapp/app_settings.dart';
-import 'package:beryapp/main.dart';
+import 'package:puli_meka/app_settings.dart';
+import 'package:puli_meka/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -35,7 +35,7 @@ void main() {
     addTearDown(tester.view.reset);
     PackageInfo.setMockInitialValues(
       appName: 'Puli Meka',
-      packageName: 'com.beryapp.beryapp',
+      packageName: 'com.chandrachaan.pulimeka',
       version: '2.1.0',
       buildNumber: '7',
       buildSignature: '',

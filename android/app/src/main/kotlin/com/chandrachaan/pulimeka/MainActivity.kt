@@ -1,4 +1,4 @@
-package com.beryapp.beryapp
+package com.chandrachaan.pulimeka
 
 import io.flutter.embedding.android.FlutterActivity
 

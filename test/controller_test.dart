@@ -1,6 +1,6 @@
-import 'package:beryapp/game/ai.dart';
-import 'package:beryapp/game/game_controller.dart';
-import 'package:beryapp/game/puli_meka.dart';
+import 'package:puli_meka/game/ai.dart';
+import 'package:puli_meka/game/game_controller.dart';
+import 'package:puli_meka/game/puli_meka.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Future<Move> _firstMove(PuliMekaGame g, Difficulty d, Map<String, int> seen) async =>

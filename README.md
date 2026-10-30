@@ -34,6 +34,8 @@ Free, no ads, no account, works offline. See [all releases](https://github.com/C
 
 Download [`puli-meka.apk`](https://github.com/ChandraChaan/Puli-Meka-Game/releases/latest/download/puli-meka.apk) from the [latest release](https://github.com/ChandraChaan/Puli-Meka-Game/releases/latest) and open it on your phone. If asked, allow your browser or file manager to install unknown apps.
 
+The app ID is `com.chandrachaan.pulimeka`. Builds made before 30 October 2026 used `com.beryapp.beryapp`; if you have one of those, uninstall it, since the new build installs as a separate app.
+
 Every push builds a new APK with GitHub Actions (`.github/workflows/android-apk.yml`) and publishes it on the [Releases](https://github.com/ChandraChaan/Puli-Meka-Game/releases) page: builds from `main` become the latest release, builds from other branches are marked as pre-releases. You can also run the workflow by hand from the **Actions** tab.
 
 ### Signing key (recommended)

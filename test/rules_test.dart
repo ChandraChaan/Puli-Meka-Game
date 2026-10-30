@@ -1,5 +1,5 @@
-import 'package:beryapp/game/board.dart';
-import 'package:beryapp/game/puli_meka.dart';
+import 'package:puli_meka/game/board.dart';
+import 'package:puli_meka/game/puli_meka.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
