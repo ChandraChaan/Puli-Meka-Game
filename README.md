@@ -4,9 +4,9 @@
 
 In villages the board is drawn with chalk on the floor or a stone verandah and played with pebbles and tamarind seeds. The same game is known as *Aadu Puli Aattam* in Tamil Nadu and *Aadu Huli* in Karnataka.
 
-### [⬇️ Download the Android app (APK)](https://github.com/ChandraChaan/beryapp/releases/latest/download/puli-meka.apk)
+### [⬇️ Download the Android app (APK)](https://github.com/ChandraChaan/Puli-Meka-Game/releases/latest/download/puli-meka.apk)
 
-Free, no ads, no account, works offline. See [all releases](https://github.com/ChandraChaan/beryapp/releases).
+Free, no ads, no account, works offline. See [all releases](https://github.com/ChandraChaan/Puli-Meka-Game/releases).
 
 ## The game
 
@@ -32,9 +32,9 @@ Free, no ads, no account, works offline. See [all releases](https://github.com/C
 
 ## Install on Android
 
-Download [`puli-meka.apk`](https://github.com/ChandraChaan/beryapp/releases/latest/download/puli-meka.apk) from the [latest release](https://github.com/ChandraChaan/beryapp/releases/latest) and open it on your phone. If asked, allow your browser or file manager to install unknown apps.
+Download [`puli-meka.apk`](https://github.com/ChandraChaan/Puli-Meka-Game/releases/latest/download/puli-meka.apk) from the [latest release](https://github.com/ChandraChaan/Puli-Meka-Game/releases/latest) and open it on your phone. If asked, allow your browser or file manager to install unknown apps.
 
-Every push builds a new APK with GitHub Actions (`.github/workflows/android-apk.yml`) and publishes it on the [Releases](https://github.com/ChandraChaan/beryapp/releases) page: builds from `main` become the latest release, builds from other branches are marked as pre-releases. You can also run the workflow by hand from the **Actions** tab.
+Every push builds a new APK with GitHub Actions (`.github/workflows/android-apk.yml`) and publishes it on the [Releases](https://github.com/ChandraChaan/Puli-Meka-Game/releases) page: builds from `main` become the latest release, builds from other branches are marked as pre-releases. You can also run the workflow by hand from the **Actions** tab.
 
 ### Signing key (recommended)
 

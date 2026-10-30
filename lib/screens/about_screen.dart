@@ -13,7 +13,7 @@ import '../widgets/decorations.dart';
 class AppLinks {
   AppLinks._();
 
-  static const repo = 'https://github.com/ChandraChaan/beryapp';
+  static const repo = 'https://github.com/ChandraChaan/Puli-Meka-Game';
   static const latestRelease = '$repo/releases/latest';
   static const issues = '$repo/issues';
 }
