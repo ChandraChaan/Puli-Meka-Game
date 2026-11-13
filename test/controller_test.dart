@@ -110,4 +110,31 @@ void main() {
     expect(c.result?.outcome, Outcome.draw);
     expect(c.result?.reason, OutcomeReason.repetition);
   });
+
+  test('reports pick-ups and taps that cannot be played', () {
+    final c = GameController(mode: GameMode.twoPlayer)..start();
+    final selects = <int>[];
+    final misses = <int>[];
+    c.onSelect = selects.add;
+    c.onInvalidTap = misses.add;
+
+    c.tapPoint(0); // A tiger, while goats are being placed.
+    expect(misses, [0]);
+    c.tapPoint(20);
+    expect(c.game.board[20], Cell.goat);
+
+    c.tapPoint(20); // The other side's piece.
+    expect(misses, [0, 20]);
+    c.tapPoint(0);
+    expect(selects, [0]);
+    expect(c.selected, 0);
+
+    c.tapPoint(22); // Out of reach: a miss, but the tiger stays in hand.
+    expect(misses, [0, 20, 22]);
+    expect(c.selected, 0);
+
+    c.tapPoint(0); // Putting it down again is not a miss.
+    expect(c.selected, isNull);
+    expect(misses, hasLength(3));
+  });
 }

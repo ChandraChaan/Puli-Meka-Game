@@ -52,7 +52,15 @@ class Move {
 
 enum Outcome { tigersWin, goatsWin, draw }
 
-enum OutcomeReason { captures, tigersTrapped, goatsTrapped, repetition }
+enum OutcomeReason {
+  captures,
+  tigersTrapped,
+  goatsTrapped,
+  repetition,
+
+  /// An online player resigned, left, or lost their connection.
+  forfeit,
+}
 
 class GameResult {
   final Outcome outcome;

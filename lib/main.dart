@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_settings.dart';
+import 'feedback.dart';
 import 'screens/home_screen.dart';
 import 'theme.dart';
 
@@ -9,6 +10,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
   final settings = await AppSettings.load();
+  GameFeedback.instance.warmUp();
   runApp(PuliMekaApp(settings: settings));
 }
 

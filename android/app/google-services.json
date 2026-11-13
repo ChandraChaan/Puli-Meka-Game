@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "71966219810",
+    "project_id": "puli-meka-chandra",
+    "storage_bucket": "puli-meka-chandra.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:71966219810:android:c383136a64307240d4747b",
+        "android_client_info": {
+          "package_name": "com.chandrachaan.pulimeka"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAZQHSKR87pm3iD-FMGAKItE6q1fCaRbIA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
