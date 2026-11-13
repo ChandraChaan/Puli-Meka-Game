@@ -6,6 +6,7 @@ import '../game/board.dart';
 import '../game/game_controller.dart';
 import '../game/puli_meka.dart';
 import '../theme.dart';
+import 'animal_face.dart';
 
 /// Converts board layout units to pixels for a given size.
 class BoardGeometry {
@@ -86,6 +87,15 @@ class BoardView extends StatefulWidget {
   /// Whether the game is over, which dims the losing side.
   final bool gameOver;
 
+  /// Goats that look scared; defaults to [threatened].
+  final Set<int>? scared;
+
+  /// Tigers that could capture a goat right now; they look sly.
+  final Set<int> hunting;
+
+  /// Tigers with no move at all; they look glum.
+  final Set<int> trapped;
+
   const BoardView({
     super.key,
     required this.pieces,
@@ -105,6 +115,9 @@ class BoardView extends StatefulWidget {
     this.rejectSerial = 0,
     this.celebrate,
     this.gameOver = false,
+    this.scared,
+    this.hunting = const {},
+    this.trapped = const {},
   });
 
   @override
@@ -205,6 +218,46 @@ class _BoardViewState extends State<BoardView> with TickerProviderStateMixin {
     );
   }
 
+  AnimalMood _moodOf(Piece piece) {
+    final w = widget;
+    final p = piece.point;
+    if (w.gameOver) {
+      if (w.celebrate == null) return AnimalMood.calm;
+      return (w.celebrate == Side.tiger) == piece.isTiger ? AnimalMood.happy : AnimalMood.sad;
+    }
+    if (piece.isTiger) {
+      if (p == w.selected) return AnimalMood.roar;
+      if (w.hunting.contains(p)) return AnimalMood.hunting;
+      if (w.trapped.contains(p)) return AnimalMood.sad;
+      return AnimalMood.calm;
+    }
+    if ((w.scared ?? w.threatened).contains(p)) return AnimalMood.scared;
+    if (p == w.selected) return AnimalMood.alert;
+    return AnimalMood.calm;
+  }
+
+  /// Each animal keeps an eye on the nearest enemy; a hunting tiger watches
+  /// the goat it could take.
+  Offset _lookOf(Piece piece) {
+    final here = Board.positions[piece.point];
+    Offset? best;
+    var bestDist = double.infinity;
+    final scared = widget.scared ?? widget.threatened;
+    final preferThreatened = piece.isTiger && widget.hunting.contains(piece.point);
+    for (final other in widget.pieces) {
+      if (other.isTiger == piece.isTiger) continue;
+      if (preferThreatened && !scared.contains(other.point)) continue;
+      final there = Board.positions[other.point];
+      final d = Offset(there.x - here.x, there.y - here.y);
+      if (d.distance < bestDist) {
+        bestDist = d.distance;
+        best = d;
+      }
+    }
+    if (best == null || best.distance == 0) return Offset.zero;
+    return best / best.distance;
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
@@ -280,6 +333,8 @@ class _BoardViewState extends State<BoardView> with TickerProviderStateMixin {
                       key: ValueKey(piece.id),
                       piece: piece,
                       geo: geo,
+                      mood: _moodOf(piece),
+                      look: _lookOf(piece),
                       lifted: piece.point == widget.selected,
                       leaping: last != null &&
                           last.isCapture &&
@@ -323,6 +378,8 @@ class _BoardPiece extends StatefulWidget {
   final Animation<double>? dance;
   final double dancePhase;
   final bool dimmed;
+  final AnimalMood mood;
+  final Offset look;
 
   const _BoardPiece({
     super.key,
@@ -336,6 +393,8 @@ class _BoardPiece extends StatefulWidget {
     required this.dance,
     required this.dancePhase,
     required this.dimmed,
+    required this.mood,
+    required this.look,
   });
 
   @override
@@ -461,7 +520,18 @@ class _BoardPieceState extends State<_BoardPiece> with TickerProviderStateMixin 
                     Positioned.fill(
                       child: Transform.translate(
                         offset: Offset(dx, -lift),
-                        child: Transform.scale(scale: scale, child: child),
+                        child: Transform.scale(
+                          scale: scale,
+                          child: PieceToken(
+                            isTiger: widget.piece.isTiger,
+                            lifted: widget.lifted,
+                            animateIn: false,
+                            // Fangs out for the whole leap.
+                            mood: _leap && raw < 1 ? AnimalMood.roar : widget.mood,
+                            look: widget.look,
+                            lively: !widget.reduceMotion,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -471,12 +541,11 @@ class _BoardPieceState extends State<_BoardPiece> with TickerProviderStateMixin 
           ),
         );
       },
-      child: PieceToken(isTiger: widget.piece.isTiger, lifted: widget.lifted, animateIn: false),
     );
   }
 }
 
-/// A round playing piece: a tiger or a goat.
+/// A playing piece: a cartoon tiger or goat.
 class PieceToken extends StatelessWidget {
   final bool isTiger;
   final bool lifted;
@@ -484,7 +553,23 @@ class PieceToken extends StatelessWidget {
   /// Whether the token pops in when first shown.
   final bool animateIn;
 
-  const PieceToken({super.key, required this.isTiger, this.lifted = false, this.animateIn = true});
+  final AnimalMood mood;
+
+  /// Where the animal looks, as a direction.
+  final Offset look;
+
+  /// Whether it blinks and twitches on its own.
+  final bool lively;
+
+  const PieceToken({
+    super.key,
+    required this.isTiger,
+    this.lifted = false,
+    this.animateIn = true,
+    this.mood = AnimalMood.calm,
+    this.look = Offset.zero,
+    this.lively = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -494,36 +579,31 @@ class PieceToken extends StatelessWidget {
       curve: Curves.easeOutBack,
       child: LayoutBuilder(builder: (context, c) {
         final d = c.biggest.shortestSide;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              center: const Alignment(-0.35, -0.4),
-              colors: isTiger
-                  ? const [Color(0xFFFFD180), AppColors.tigerOrange, AppColors.tigerDeep]
-                  : const [Colors.white, AppColors.goatCream, Color(0xFFD7C4A0)],
-              stops: const [0, 0.55, 1],
-            ),
-            border: Border.all(
-              color: isTiger ? const Color(0xFF4E2100) : const Color(0xFF6D4C2F),
-              width: math.max(1.5, d * 0.06),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.45),
-                blurRadius: lifted ? d * 0.35 : d * 0.15,
-                offset: Offset(0, lifted ? d * 0.15 : d * 0.06),
+        return Stack(
+          clipBehavior: Clip.none,
+          fit: StackFit.expand,
+          children: [
+            // The shadow the piece casts on the board.
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              margin: EdgeInsets.all(d * 0.06),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    blurRadius: lifted ? d * 0.35 : d * 0.15,
+                    offset: Offset(0, lifted ? d * 0.15 : d * 0.06),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              isTiger ? '🐯' : '🐐',
-              style: TextStyle(fontSize: d * 0.55, height: 1.1),
-              textScaler: TextScaler.noScaling,
             ),
-          ),
+            Padding(
+              // Leave room for ears and horns.
+              padding: EdgeInsets.all(d * 0.06),
+              child: AnimalFace(isTiger: isTiger, mood: mood, look: look, lively: lively),
+            ),
+          ],
         );
       }),
     );
@@ -607,7 +687,12 @@ class _CaptureBurst extends StatelessWidget {
                       child: SizedBox(
                         width: radius * 2,
                         height: radius * 2,
-                        child: const PieceToken(isTiger: false, animateIn: false),
+                        child: const PieceToken(
+                          isTiger: false,
+                          animateIn: false,
+                          mood: AnimalMood.dizzy,
+                          lively: false,
+                        ),
                       ),
                     ),
                   ),

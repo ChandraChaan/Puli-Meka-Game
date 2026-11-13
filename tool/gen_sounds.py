@@ -120,20 +120,112 @@ def bell(freq, seconds=1.2):
     return shape(tone(freq, seconds, partials), env(n, 0.002, 0.35))
 
 
-def bleat(seconds=0.42):
-    """A short goat cry: a buzzy voice with fast tremolo, bending down."""
+def bandpass(samples, freq, q):
+    """A resonant band-pass filter (RBJ biquad), used to shape vowels."""
+    w0 = 2 * math.pi * freq / RATE
+    alpha = math.sin(w0) / (2 * q)
+    a0 = 1 + alpha
+    b0, b2 = alpha / a0, -alpha / a0
+    a1, a2 = -2 * math.cos(w0) / a0, (1 - alpha) / a0
+    out = []
+    x1 = x2 = y1 = y2 = 0.0
+    for x in samples:
+        y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2
+        x2, x1 = x1, x
+        y2, y1 = y1, y
+        out.append(y)
+    return out
+
+
+def formants(source, bands):
+    """Passes a buzzy source through vocal-tract resonances."""
+    out = [0.0] * len(source)
+    for freq, q, gain in bands:
+        for i, v in enumerate(bandpass(source, freq, q)):
+            out[i] += v * gain
+    return out
+
+
+def voice(pitch, seconds, harmonics=14, rough=0.0, sub=0.0):
+    """A glottal-style buzz whose pitch follows pitch(t) for t in 0..1.
+    [rough] adds the irregular rasp of a big cat; [sub] a growl an octave down."""
     n = int(RATE * seconds)
     out, phase = [], 0.0
+    jitter, rasp = 0.0, 1.0
     for i in range(n):
         t = i / n
-        f = 520 - 140 * t
+        if rough:
+            # Slowly wandering pitch and a ragged amplitude.
+            jitter += (random.uniform(-1, 1) - jitter) * 0.02
+            rasp += (random.uniform(1 - rough, 1 + rough) - rasp) * 0.08
+        f = pitch(t) * (1 + jitter * 0.04 * rough)
         phase += 2 * math.pi * f / RATE
-        # Buzzy source: a few odd harmonics.
-        v = math.sin(phase) + 0.45 * math.sin(3 * phase) + 0.25 * math.sin(5 * phase)
-        trem = 0.55 + 0.45 * math.sin(2 * math.pi * 22 * i / RATE)
-        amp = min(1, t * 25) * (1 - t) ** 1.4
-        out.append(v * trem * amp)
-    return lowpass(out, 2600)
+        v = 0.0
+        for h in range(1, harmonics + 1):
+            if f * h > RATE / 2.2:
+                break
+            v += math.sin(h * phase) / h
+        if sub:
+            v += sub * math.sin(phase / 2)
+        out.append(v * rasp)
+    return out
+
+
+def bleat(seconds=0.55, base=430, scared=False):
+    """A goat's "meh-eh-eh": a nasal voice that pulses quickly."""
+    n = int(RATE * seconds)
+    pulse = 26 if scared else 17
+
+    def pitch(t):
+        bend = 1 + 0.12 * math.sin(math.pi * t) - 0.18 * t
+        return base * bend * (1 + 0.035 * math.sin(2 * math.pi * pulse * t * seconds))
+
+    src = voice(pitch, seconds, harmonics=16)
+    v = formants(src, [(700, 6, 1.0), (1750, 7, 0.7), (2600, 9, 0.35)])
+    out = []
+    for i, x in enumerate(v):
+        t = i / n
+        trem = 0.45 + 0.55 * abs(math.sin(math.pi * pulse * t * seconds))
+        amp = min(1, t * 18) * (1 - t) ** 0.9
+        out.append(x * trem * amp)
+    breath = [x * 0.15 for x in highpass(noise(seconds), 2500)]
+    return [a + b * min(1, i / n * 18) * (1 - i / n) for i, (a, b) in enumerate(zip(out, breath))]
+
+
+def growl(seconds=0.6, base=85, rough=0.5):
+    """A tiger's low warning rumble."""
+    n = int(RATE * seconds)
+
+    def pitch(t):
+        return base * (1 + 0.15 * math.sin(math.pi * t))
+
+    src = voice(pitch, seconds, harmonics=30, rough=rough, sub=0.5)
+    v = formants(src, [(330, 3, 1.0), (850, 4, 0.6), (1900, 6, 0.25)])
+    breath = bandpass(noise(seconds), 600, 1.2)
+    out = []
+    for i, (x, b) in enumerate(zip(v, breath)):
+        t = i / n
+        amp = min(1, t * 6) * (1 - t) ** 1.2
+        out.append((x + b * 0.25) * amp)
+    return out
+
+
+def roar(seconds=1.5):
+    """A full tiger roar: swells up, peaks, then falls away."""
+    n = int(RATE * seconds)
+
+    def pitch(t):
+        return 95 + 85 * math.sin(math.pi * min(1, t / 0.75)) * (1 - 0.4 * t)
+
+    src = voice(pitch, seconds, harmonics=40, rough=0.8, sub=0.35)
+    v = formants(src, [(420, 2.5, 1.0), (1050, 3.5, 0.8), (2300, 5, 0.35)])
+    breath = bandpass(noise(seconds), 900, 0.9)
+    out = []
+    for i, (x, b) in enumerate(zip(v, breath)):
+        t = i / n
+        amp = min(1, (t / 0.18) ** 1.5) * (1 - t) ** 1.6
+        out.append((x + b * 0.4 * (0.5 + t)) * amp)
+    return out
 
 
 def thud(seconds=0.25):
@@ -169,9 +261,6 @@ def save(name, samples, peak=0.85):
 def main():
     os.makedirs(OUT, exist_ok=True)
 
-    # Picking up a piece: a light high tick.
-    save('select.wav', wood(pitch=2.2, length=0.06), peak=0.5)
-
     # Placing a goat: a solid wooden knock.
     save('place.wav', wood(pitch=1.0, length=0.12))
 
@@ -181,29 +270,42 @@ def main():
     mix(move, wood(pitch=1.15, length=0.1), at=0.1)
     save('move.wav', move)
 
-    # Capture: the tiger leaps, lands heavily, and the goat cries out.
+    # Capture: the tiger leaps and snarls as it lands, and the goat cries out.
     cap = [s * 0.5 for s in whoosh(0.26, 500, 3000)]
     mix(cap, thud(), at=0.22)
     mix(cap, wood(pitch=0.8, length=0.12), at=0.22, gain=0.8)
-    mix(cap, bleat(), at=0.26, gain=0.55)
+    mix(cap, growl(0.45, base=110, rough=0.9), at=0.18, gain=0.7)
+    mix(cap, bleat(0.5, base=520, scared=True), at=0.28, gain=0.55)
     save('capture.wav', cap, peak=0.95)
+
+    # Picking up a tiger: a short, low growl.
+    save('growl.wav', growl(0.5), peak=0.7)
+
+    # Picking up a goat: a soft, short bleat.
+    save('bleat.wav', bleat(0.42), peak=0.55)
+
+    # A goat realises a tiger can reach it: a quick, high, nervous cry.
+    save('scared.wav', bleat(0.38, base=560, scared=True), peak=0.6)
 
     # Invalid tap: two dull low knocks.
     bad = wood(pitch=0.55, length=0.07)
     mix(bad, wood(pitch=0.5, length=0.08), at=0.09)
     save('invalid.wav', lowpass(bad, 1400), peak=0.6)
 
-    # Win: a rising run of temple bells.
-    win = silence(0.05)
-    for i, f in enumerate([523.25, 659.25, 783.99, 1046.5]):
-        mix(win, bell(f, 1.3), at=0.12 * i, gain=0.8 if i < 3 else 1.0)
-    save('win.wav', win)
+    # Tigers win: a roar over low bells.
+    tw = silence(0.05)
+    mix(tw, roar(), at=0.0)
+    for i, f in enumerate([196.0, 261.63]):
+        mix(tw, bell(f, 1.4), at=0.9 + 0.25 * i, gain=0.35)
+    save('tigers_win.wav', tw, peak=0.95)
 
-    # Loss: slow falling low bells.
-    lose = silence(0.05)
-    for i, f in enumerate([392.0, 329.63, 261.63]):
-        mix(lose, bell(f, 1.4), at=0.28 * i)
-    save('lose.wav', lowpass(lose, 1800), peak=0.75)
+    # Goats win: the herd bleats happily over a rising run of temple bells.
+    gw = silence(0.05)
+    for i, f in enumerate([523.25, 659.25, 783.99, 1046.5]):
+        mix(gw, bell(f, 1.3), at=0.12 * i, gain=0.55)
+    for at, base in [(0.15, 430), (0.45, 500), (0.7, 460)]:
+        mix(gw, bleat(0.45, base=base), at=at, gain=0.5)
+    save('goats_win.wav', gw)
 
     # Draw: two even bells.
     draw = bell(587.33, 1.2)

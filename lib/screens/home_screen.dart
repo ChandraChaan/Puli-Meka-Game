@@ -11,6 +11,7 @@ import '../widgets/board_view.dart';
 import '../widgets/decorations.dart';
 import 'about_screen.dart';
 import 'game_screen.dart';
+import 'online_lobby_screen.dart';
 import 'rules_screen.dart';
 import 'stats_screen.dart';
 
@@ -81,6 +82,14 @@ class HomeScreen extends StatelessWidget {
                                 mode: GameMode.twoPlayer,
                                 captureTarget: settings.captureTarget,
                               ),
+                            ),
+                          ),
+                          _MenuCard(
+                            emoji: '🌐',
+                            title: s.playOnline,
+                            subtitle: s.playOnlineSub,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(builder: (_) => const OnlineLobbyScreen()),
                             ),
                           ),
                           Row(

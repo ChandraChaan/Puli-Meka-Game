@@ -7,9 +7,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'ai.dart';
+import 'board.dart';
 import 'puli_meka.dart';
 
-enum GameMode { vsComputer, twoPlayer }
+enum GameMode { vsComputer, twoPlayer, online }
 
 /// A piece on screen. Pieces keep their [id] as they move so the board can
 /// animate them.
@@ -33,8 +34,12 @@ Future<Move> defaultMoveFinder(PuliMekaGame game, Difficulty difficulty, Map<Str
 class GameController extends ChangeNotifier {
   final GameMode mode;
 
-  /// The side the human plays against the computer.
-  final Side humanSide;
+  /// The side the human plays against the computer or an online opponent.
+  /// Online, sides swap on a rematch.
+  Side humanSide;
+
+  /// The other player's name in an online game.
+  String? opponentName;
   final Difficulty difficulty;
   final int captureTarget;
   final MoveFinder _findMoveFor;
@@ -45,6 +50,9 @@ class GameController extends ChangeNotifier {
 
   /// Called after every move, for sounds and vibration.
   void Function(Move move)? onMove;
+
+  /// Called after this player moves in an online game, to send the move.
+  void Function(Move move)? onLocalMove;
 
   /// Called when the player picks up a piece.
   void Function(int point)? onSelect;
@@ -100,7 +108,8 @@ class GameController extends ChangeNotifier {
   /// Begins play; lets the computer move first if it has the goats.
   void start() => _maybeComputerTurn();
 
-  void restart() {
+  void restart({Side? side}) {
+    if (side != null) humanSide = side;
     _reset();
     notifyListeners();
     _maybeComputerTurn();
@@ -108,13 +117,37 @@ class GameController extends ChangeNotifier {
 
   bool get isOver => result != null;
   bool get isComputerTurn => mode == GameMode.vsComputer && game.turn != humanSide && !isOver;
-  bool get isHumanTurn => !isOver && !isComputerTurn;
+
+  /// Whether the person holding this phone may move now.
+  bool get isHumanTurn =>
+      !isOver && !isComputerTurn && (mode != GameMode.online || game.turn == humanSide);
+  bool get isOnline => mode == GameMode.online;
   Move? get lastMove => history.isEmpty ? null : history.last;
 
   /// The goats a tiger could jump right now, shown as a warning on the goats'
   /// turn.
   Set<int> get threatenedGoats =>
       game.turn == Side.goat && !isOver ? game.goatsUnderThreat() : const {};
+
+  /// Goats a tiger could jump, whoever's turn it is; they look scared.
+  Set<int> get goatsInDanger => isOver ? const {} : game.goatsUnderThreat();
+
+  /// Tigers that could capture a goat, whoever's turn it is.
+  Set<int> get huntingTigers {
+    if (isOver) return const {};
+    return {
+      for (final p in game.pointsWith(Cell.tiger))
+        if (Board.jumps[p]
+            .any((j) => game.board[j.over] == Cell.goat && game.board[j.to] == Cell.empty))
+          p,
+    };
+  }
+
+  /// Tigers with no move at all.
+  Set<int> get trappedTigers => {
+        for (final p in game.pointsWith(Cell.tiger))
+          if (game.tigerMobility(p) == 0) p,
+      };
 
   /// Moves available to the selected piece.
   List<Move> get selectedMoves {
@@ -131,6 +164,7 @@ class GameController extends ChangeNotifier {
   }
 
   bool get canUndo {
+    if (mode == GameMode.online) return false;
     if (mode == GameMode.twoPlayer) return history.isNotEmpty;
     // Only undo if the human has made a move to take back.
     return history.length >= (humanSide == Side.goat ? 1 : 2);
@@ -138,7 +172,8 @@ class GameController extends ChangeNotifier {
 
   String sideLabel(Side side, String you, String computer, String Function(int) player) {
     if (mode == GameMode.twoPlayer) return player(side == Side.goat ? 1 : 2);
-    return side == humanSide ? you : computer;
+    if (side == humanSide) return you;
+    return mode == GameMode.online ? opponentName ?? player(2) : computer;
   }
 
   void tapPoint(int point) {
@@ -181,7 +216,29 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _play(Move m) {
+  /// Plays a move from the online room: the opponent's, or this player's
+  /// own when catching up with the server. Returns false, and changes
+  /// nothing, if the move is not legal here. [silent] skips the sound.
+  bool applyRemoteMove(Move m, {bool silent = false}) {
+    if (isOver || !game.legalMoves().contains(m)) return false;
+    _play(m, remote: true, silent: silent);
+    return true;
+  }
+
+  /// Ends the game early, e.g. when an online player leaves.
+  void endGame(GameResult r) {
+    if (isOver) return;
+    _searchToken++;
+    thinking = false;
+    hinting = false;
+    selected = null;
+    hint = null;
+    result = r;
+    notifyListeners();
+    onGameOver?.call(r);
+  }
+
+  void _play(Move m, {bool remote = false, bool silent = false}) {
     game.apply(m);
     history.add(m);
     _movePieces(m);
@@ -194,7 +251,8 @@ class GameController extends ChangeNotifier {
     result = game.result ??
         (seen >= 3 ? const GameResult(Outcome.draw, OutcomeReason.repetition) : null);
 
-    onMove?.call(m);
+    if (!silent) onMove?.call(m);
+    if (mode == GameMode.online && !remote) onLocalMove?.call(m);
     notifyListeners();
     final r = result;
     if (r != null) {
@@ -218,8 +276,10 @@ class GameController extends ChangeNotifier {
     _play(move);
   }
 
+  bool get canHint => mode != GameMode.online;
+
   Future<void> showHint() async {
-    if (!isHumanTurn || thinking || hinting) return;
+    if (!canHint || !isHumanTurn || thinking || hinting) return;
     final token = _searchToken;
     hinting = true;
     notifyListeners();

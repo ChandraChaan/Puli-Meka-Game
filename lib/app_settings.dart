@@ -38,6 +38,9 @@ class AppSettings extends ChangeNotifier {
   bool telugu;
   bool sound;
   bool vibration;
+
+  /// The name shown to online opponents.
+  String onlineName;
   int captureTarget;
   Side lastSide;
   Difficulty lastDifficulty;
@@ -48,6 +51,7 @@ class AppSettings extends ChangeNotifier {
         sound = _prefs?.getBool('sound') ?? true,
         // Older versions had one switch for both; carry it over.
         vibration = _prefs?.getBool('vibration') ?? _prefs?.getBool('sound') ?? true,
+        onlineName = _prefs?.getString('onlineName') ?? '',
         captureTarget = _prefs?.getInt('captureTarget') ?? PuliMekaGame.defaultCaptureTarget,
         lastSide = Side.values[_prefs?.getInt('lastSide') ?? 0],
         lastDifficulty = Difficulty.values[_prefs?.getInt('lastDifficulty') ?? 1],
@@ -95,6 +99,11 @@ class AppSettings extends ChangeNotifier {
     vibration = value;
     _prefs?.setBool('vibration', value);
     notifyListeners();
+  }
+
+  void setOnlineName(String value) {
+    onlineName = value;
+    _prefs?.setString('onlineName', value);
   }
 
   void setCaptureTarget(int value) {

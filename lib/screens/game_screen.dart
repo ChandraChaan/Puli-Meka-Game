@@ -7,14 +7,20 @@ import '../game/game_controller.dart';
 import '../game/puli_meka.dart';
 import '../l10n.dart';
 import '../main.dart';
+import '../online/online_session.dart';
 import '../theme.dart';
+import '../widgets/animal_face.dart';
 import '../widgets/board_view.dart';
 import '../widgets/decorations.dart';
 import 'rules_screen.dart';
 
 class GameScreen extends StatefulWidget {
   final GameController controller;
-  const GameScreen({super.key, required this.controller});
+
+  /// The online room, when playing someone over the internet.
+  final OnlineSession? online;
+
+  const GameScreen({super.key, required this.controller, this.online});
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -37,28 +43,59 @@ class _GameScreenState extends State<GameScreen> {
     super.initState();
     c.onMove = _feedback;
     c.onGameOver = _gameOver;
-    c.onSelect = (_) => _play(GameSound.select);
+    c.onSelect = (point) =>
+        _play(c.game.board[point] == Cell.tiger ? GameSound.growl : GameSound.bleat);
     c.onInvalidTap = _invalidTap;
     c.addListener(_onChange);
+    widget.online?.addListener(_onChange);
     c.start();
+    if (online != null) {
+      _round = online!.room?.round ?? 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showBanner(SettingsScope.read(context).s.youAre(c.humanSide));
+      });
+    }
   }
 
   @override
   void dispose() {
     c.removeListener(_onChange);
+    final o = online;
+    if (o != null) {
+      o.removeListener(_onChange);
+      // Closing the screen mid-game counts as resigning.
+      if (!c.isOver) o.leave();
+      o.dispose();
+    }
     c.dispose();
     super.dispose();
   }
 
+  OnlineSession? get online => widget.online;
+
+  /// The online round shown, to notice when a rematch starts.
+  int _round = 0;
+
   void _onChange() {
     if (c.result == null && _showResult) _showResult = false;
+    // Keep up after undo, restart or a rematch.
+    _danger = c.goatsInDanger;
+    final round = online?.room?.round;
+    if (round != null && round != _round) {
+      _round = round;
+      _showBanner(SettingsScope.read(context).s.youAre(c.humanSide));
+    }
     setState(() {});
   }
 
-  void _play(GameSound sound) {
+  void _play(GameSound sound, {Buzz? buzz}) {
     final settings = SettingsScope.read(context);
-    GameFeedback.instance.play(sound, sound: settings.sound, vibrate: settings.vibration);
+    GameFeedback.instance
+        .play(sound, sound: settings.sound, vibrate: settings.vibration, buzz: buzz);
   }
+
+  /// Goats already in danger, so a nervous bleat sounds only for new ones.
+  Set<int> _danger = const {};
 
   void _invalidTap(int point) {
     _play(GameSound.invalid);
@@ -85,6 +122,18 @@ class _GameScreenState extends State<GameScreen> {
             : GameSound.move);
     final s = SettingsScope.read(context).s;
     final game = c.game;
+
+    // A goat that has just come within a tiger's reach cries out, once the
+    // move has landed.
+    final danger = c.goatsInDanger;
+    final fresh = danger.difference(_danger).isNotEmpty;
+    _danger = danger;
+    if (fresh && !m.isCapture && c.result == null) {
+      Future<void>.delayed(const Duration(milliseconds: 380), () {
+        if (mounted && !c.isOver) _play(GameSound.scared);
+      });
+    }
+
     if (m.isPlacement && !game.isPlacementPhase && c.result == null) {
       _showBanner(s.allGoatsPlaced);
     } else if (m.isCapture &&
@@ -104,19 +153,25 @@ class _GameScreenState extends State<GameScreen> {
       );
     }
     final winner = result.winner;
-    final GameSound sound;
+    // You hear the winning animal; the vibration says whether you won.
+    final GameSound sound = switch (winner) {
+      null => GameSound.draw,
+      Side.tiger => GameSound.tigersWin,
+      Side.goat => GameSound.goatsWin,
+    };
+    final Buzz buzz;
     if (winner == null) {
-      sound = GameSound.draw;
-    } else if (c.mode == GameMode.vsComputer && winner != c.humanSide) {
-      sound = GameSound.lose;
+      buzz = Buzz.draw;
+    } else if (c.mode != GameMode.twoPlayer && winner != c.humanSide) {
+      buzz = Buzz.lose;
     } else {
-      sound = GameSound.win;
+      buzz = Buzz.win;
     }
     // Let the last move land and the winners celebrate before the result card.
     final lastWasCapture = c.lastMove?.isCapture ?? false;
     Future<void>.delayed(Duration(milliseconds: lastWasCapture ? 1300 : 900), () {
       if (!mounted || c.result != result) return;
-      _play(sound);
+      _play(sound, buzz: buzz);
       setState(() => _showResult = true);
     });
   }
@@ -152,12 +207,13 @@ class _GameScreenState extends State<GameScreen> {
         (c.mode == GameMode.twoPlayer ? result.winner != null : result.winner == c.humanSide);
 
     return PopScope(
-      canPop: !_inProgress,
+      canPop: online == null ? !_inProgress : c.isOver,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (await _confirm(s.leaveGame, s.leave) && context.mounted) {
-          Navigator.of(context).pop();
-        }
+        final ok = online == null
+            ? await _confirm(s.leaveGame, s.leave)
+            : await _confirm(s.resignConfirm, s.resign);
+        if (ok && context.mounted) Navigator.of(context).pop();
       },
       child: Scaffold(
         body: MugguluBackground(
@@ -211,6 +267,7 @@ class _GameScreenState extends State<GameScreen> {
                     controller: c,
                     result: result,
                     onPlayAgain: c.restart,
+                    online: online,
                     onViewBoard: () => setState(() => _showResult = false),
                     onHome: () => Navigator.of(context).pop(),
                   ),
@@ -242,6 +299,9 @@ class _GameScreenState extends State<GameScreen> {
       rejectSerial: _rejectSerial,
       celebrate: c.result?.winner,
       gameOver: c.isOver,
+      scared: c.goatsInDanger,
+      hunting: c.huntingTigers,
+      trapped: c.trappedTigers,
       onTapPoint: c.tapPoint,
       pointLabel: (p) => SettingsScope.of(context).s.pointLabel(p, c.game.board[p]),
     );
@@ -262,9 +322,11 @@ class _GameScreenState extends State<GameScreen> {
               children: [
                 Text(s.appName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
                 Text(
-                  c.mode == GameMode.vsComputer
-                      ? '${s.playComputer} · ${s.difficultyName(c.difficulty)}'
-                      : s.playFriend,
+                  switch (c.mode) {
+                    GameMode.vsComputer => '${s.playComputer} · ${s.difficultyName(c.difficulty)}',
+                    GameMode.twoPlayer => s.playFriend,
+                    GameMode.online => s.onlineVs(c.opponentName ?? s.player(2)),
+                  },
                   style: TextStyle(fontSize: 12, color: AppColors.chalk.withValues(alpha: 0.7)),
                 ),
               ],
@@ -298,7 +360,7 @@ class _GameScreenState extends State<GameScreen> {
               name: s.sideName(Side.goat),
               who: who(Side.goat),
               active: !c.isOver && game.turn == Side.goat,
-              thinking: c.thinking && game.turn == Side.goat,
+              thinking: _waitingOn(Side.goat),
               detail: game.isPlacementPhase ? s.inHand(game.goatsInHand) : null,
               tally: _GoatTally(game: game),
             ),
@@ -310,7 +372,7 @@ class _GameScreenState extends State<GameScreen> {
               name: s.sideName(Side.tiger),
               who: who(Side.tiger),
               active: !c.isOver && game.turn == Side.tiger,
-              thinking: c.thinking && game.turn == Side.tiger,
+              thinking: _waitingOn(Side.tiger),
               detail: s.captured(game.goatsCaptured, game.captureTarget),
               tally: Row(
                 children: [
@@ -350,17 +412,38 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  /// Whether [side] is the computer or online opponent, and it is their move.
+  bool _waitingOn(Side side) {
+    if (c.isOver || c.game.turn != side) return false;
+    if (c.thinking) return true;
+    return c.isOnline && side != c.humanSide;
+  }
+
   Widget _status(S s) {
     final result = c.result;
     final game = c.game;
+    final o = online;
+    final opponent = c.opponentName ?? s.player(2);
     String text;
     var warn = false;
+    Widget? action;
     if (result != null) {
       text = result.winner == null ? s.draw : s.winnerTitle(result.winner!);
     } else if (c.thinking) {
       text = s.thinking;
+    } else if (o != null && o.opponentAway) {
+      text = s.opponentAway(opponent);
+      warn = true;
+      if (o.canClaimWin) {
+        action = TextButton(onPressed: o.claimWin, child: Text(s.claimWin));
+      }
+    } else if (o != null && o.error != null) {
+      text = s.syncProblem;
+      warn = true;
+    } else if (o != null && !c.isHumanTurn) {
+      text = s.theirTurn(opponent);
     } else {
-      final who = c.mode == GameMode.vsComputer
+      final who = c.mode != GameMode.twoPlayer
           ? s.yourTurn
           : s.turnOf(c.sideLabel(game.turn, s.you, s.computer, s.player));
       final String what;
@@ -389,7 +472,7 @@ class _GameScreenState extends State<GameScreen> {
       ),
       child: Row(
         children: [
-          if (c.thinking) ...[
+          if (_waitingOn(game.turn) && !warn) ...[
             const SizedBox(
               width: 16,
               height: 16,
@@ -426,12 +509,28 @@ class _GameScreenState extends State<GameScreen> {
               ),
             ),
           ),
+          if (action != null) action,
         ],
       ),
     );
   }
 
+  Future<void> _resign() async {
+    final s = SettingsScope.read(context).s;
+    if (await _confirm(s.resignConfirm, s.resign)) await online?.leave();
+  }
+
   Widget _actions(S s) {
+    if (online != null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: _ActionButton(
+          icon: Icons.flag_rounded,
+          label: s.resign,
+          onPressed: c.isOver ? null : _resign,
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       child: Row(
@@ -448,7 +547,8 @@ class _GameScreenState extends State<GameScreen> {
               icon: Icons.lightbulb_outline_rounded,
               label: s.hint,
               busy: c.hinting,
-              onPressed: c.isHumanTurn && !c.thinking && !c.hinting ? c.showHint : null,
+              onPressed:
+                  c.canHint && c.isHumanTurn && !c.thinking && !c.hinting ? c.showHint : null,
             ),
           ),
           Expanded(
@@ -631,6 +731,7 @@ class _ResultOverlay extends StatelessWidget {
   final GameController controller;
   final GameResult result;
   final VoidCallback onPlayAgain;
+  final OnlineSession? online;
   final VoidCallback onViewBoard;
   final VoidCallback onHome;
 
@@ -639,6 +740,7 @@ class _ResultOverlay extends StatelessWidget {
     required this.controller,
     required this.result,
     required this.onPlayAgain,
+    required this.online,
     required this.onViewBoard,
     required this.onHome,
   });
@@ -646,7 +748,10 @@ class _ResultOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final winner = result.winner;
-    final vsComputer = controller.mode == GameMode.vsComputer;
+    // Against the computer or online, the result is told from your side.
+    final vsComputer = controller.mode != GameMode.twoPlayer;
+    final o = online;
+    final opponent = controller.opponentName ?? s.player(2);
     final String emoji;
     final String title;
     if (winner == null) {
@@ -683,7 +788,21 @@ class _ResultOverlay extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 64)),
+              if (winner == null)
+                Text(emoji, style: const TextStyle(fontSize: 64))
+              else
+                SizedBox(
+                  width: 92,
+                  height: 92,
+                  // Your own animal, grinning or sulking; in a two-player
+                  // game, the winner.
+                  child: PieceToken(
+                    isTiger: (vsComputer ? controller.humanSide : winner) == Side.tiger,
+                    mood: !vsComputer || winner == controller.humanSide
+                        ? AnimalMood.happy
+                        : AnimalMood.sad,
+                  ),
+                ),
               const SizedBox(height: 8),
               Text(
                 title,
@@ -700,7 +819,9 @@ class _ResultOverlay extends StatelessWidget {
               ],
               const SizedBox(height: 8),
               Text(
-                s.reason(result.reason, controller.captureTarget),
+                result.reason == OutcomeReason.forfeit && o != null
+                    ? (winner == controller.humanSide ? s.opponentLeftReason : s.youResignedReason)
+                    : s.reason(result.reason, controller.captureTarget),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.chalk.withValues(alpha: 0.85)),
               ),
@@ -710,14 +831,44 @@ class _ResultOverlay extends StatelessWidget {
                 style: TextStyle(color: AppColors.chalk.withValues(alpha: 0.6), fontSize: 13),
               ),
               const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.replay_rounded),
-                  label: Text(s.playAgain),
-                  onPressed: onPlayAgain,
+              if (o == null)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.replay_rounded),
+                    label: Text(s.playAgain),
+                    onPressed: onPlayAgain,
+                  ),
+                )
+              else if (o.canRematch) ...[
+                if (o.opponentAskedRematch && !o.iAskedRematch) ...[
+                  Text(
+                    s.rematchAsked(opponent),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.turmeric),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: o.iAskedRematch
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.replay_rounded),
+                    label: Text(o.iAskedRematch ? s.rematchWaiting(opponent) : s.rematch),
+                    onPressed: o.iAskedRematch ? null : o.requestRematch,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  s.sidesSwap,
+                  style: TextStyle(color: AppColors.chalk.withValues(alpha: 0.6), fontSize: 12),
+                ),
+              ],
               const SizedBox(height: 8),
               Row(
                 children: [
