@@ -49,6 +49,10 @@ class BoardGeometry {
   }
 }
 
+/// How long a tiger's leap over a goat takes. The goat is taken halfway.
+const Duration jumpDuration = Duration(milliseconds: 440);
+const Duration _stepDuration = Duration(milliseconds: 300);
+
 /// The Puli Meka board with animated pieces and move highlights.
 class BoardView extends StatefulWidget {
   final List<Piece> pieces;
@@ -70,6 +74,18 @@ class BoardView extends StatefulWidget {
   /// Changes whenever a move is made, so capture effects replay.
   final int moveNumber;
 
+  /// A tap that was not allowed: the point tapped, and the piece to shake.
+  /// [rejectSerial] changes on every rejected tap so the effect replays.
+  final int? rejectPoint;
+  final int? rejectPiece;
+  final int rejectSerial;
+
+  /// The winning side, whose pieces dance once the game is over.
+  final Side? celebrate;
+
+  /// Whether the game is over, which dims the losing side.
+  final bool gameOver;
+
   const BoardView({
     super.key,
     required this.pieces,
@@ -84,22 +100,109 @@ class BoardView extends StatefulWidget {
     this.pointLabel,
     this.arrows = const [],
     this.moveNumber = 0,
+    this.rejectPoint,
+    this.rejectPiece,
+    this.rejectSerial = 0,
+    this.celebrate,
+    this.gameOver = false,
   });
 
   @override
   State<BoardView> createState() => _BoardViewState();
 }
 
-class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMixin {
+class _BoardViewState extends State<BoardView> with TickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
   )..repeat(reverse: true);
 
+  /// Chalk lines drawing themselves when the board first appears.
+  late final AnimationController _intro = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  /// The board jolting as a tiger lands on a goat.
+  late final AnimationController _shake = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 620),
+  );
+
+  /// A wrong tap: the piece shakes its head and the point flashes red.
+  late final AnimationController _reject = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 380),
+  );
+
+  /// Drives the winners' victory hops.
+  late final AnimationController _dance = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  bool _reduceMotion = false;
+  bool _introStarted = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (!_introStarted) {
+      _introStarted = true;
+      if (_reduceMotion) {
+        _intro.value = 1;
+      } else {
+        _intro.forward();
+      }
+    }
+    _syncDance();
+  }
+
+  @override
+  void didUpdateWidget(BoardView old) {
+    super.didUpdateWidget(old);
+    final last = widget.lastMove;
+    if (widget.moveNumber > old.moveNumber && last != null && last.isCapture && !_reduceMotion) {
+      _shake.forward(from: 0);
+    }
+    if (widget.rejectSerial != old.rejectSerial && widget.rejectPoint != null) {
+      _reject.forward(from: 0);
+    }
+    _syncDance();
+  }
+
+  void _syncDance() {
+    final dance = widget.celebrate != null && !_reduceMotion;
+    if (dance && !_dance.isAnimating) {
+      _dance.repeat();
+    } else if (!dance && _dance.isAnimating) {
+      _dance
+        ..stop()
+        ..value = 0;
+    }
+  }
+
   @override
   void dispose() {
     _pulse.dispose();
+    _intro.dispose();
+    _shake.dispose();
+    _reject.dispose();
+    _dance.dispose();
     super.dispose();
+  }
+
+  /// Sideways jolt of the whole board, starting when the goat is taken.
+  Offset _shakeOffset(double r) {
+    const start = 0.35; // About when the tiger is over the goat.
+    final t = ((_shake.value - start) / (1 - start)).clamp(0.0, 1.0);
+    if (t == 0 || t == 1) return Offset.zero;
+    final fade = 1 - t;
+    return Offset(
+      math.sin(t * math.pi * 7) * r * 0.22 * fade,
+      math.cos(t * math.pi * 5) * r * 0.12 * fade,
+    );
   }
 
   @override
@@ -108,82 +211,97 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
       final geo = BoardGeometry.fit(constraints.biggest);
       final r = geo.pieceRadius;
       final last = widget.lastMove;
+      final tigers = [for (final p in widget.pieces) if (p.isTiger) p.id]..sort();
       return Center(
         child: SizedBox.fromSize(
           size: geo.size,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: widget.onTapPoint == null
-                ? null
-                : (d) {
-                    final p = geo.hitTest(d.localPosition);
-                    if (p != null) widget.onTapPoint!(p);
-                  },
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _BoardPainter(geo, last, widget.arrows),
-                  ),
-                ),
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _HighlightPainter(
-                      geo: geo,
-                      pulse: _pulse,
-                      selected: widget.selected,
-                      destinations: widget.destinations,
-                      movable: widget.movable,
-                      threatened: widget.threatened,
-                      hint: widget.hint,
-                      placementTargets: widget.showPlacementTargets
-                          ? {
-                              for (var i = 0; i < Board.pointCount; i++)
-                                if (!widget.pieces.any((p) => p.point == i)) i,
-                            }
-                          : const {},
+          child: AnimatedBuilder(
+            animation: _shake,
+            builder: (context, child) =>
+                Transform.translate(offset: _shakeOffset(r), child: child),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: widget.onTapPoint == null
+                  ? null
+                  : (d) {
+                      final p = geo.hitTest(d.localPosition);
+                      if (p != null) widget.onTapPoint!(p);
+                    },
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _BoardPainter(geo, last, widget.arrows, _intro),
                     ),
                   ),
-                ),
-                if (last != null && last.isCapture)
-                  _CaptureBurst(
-                    key: ValueKey('burst${widget.moveNumber}'),
-                    center: geo.point(last.captured),
-                    radius: r,
-                  ),
-                if (widget.pointLabel != null)
-                  for (var i = 0; i < Board.pointCount; i++)
-                    Positioned(
-                      left: geo.point(i).dx - r,
-                      top: geo.point(i).dy - r,
-                      width: r * 2,
-                      height: r * 2,
-                      child: Semantics(
-                        button: true,
-                        label: widget.pointLabel!(i),
-                        onTap: widget.onTapPoint == null ? null : () => widget.onTapPoint!(i),
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _HighlightPainter(
+                        geo: geo,
+                        pulse: _pulse,
+                        reject: _reject,
+                        rejectPoint: widget.rejectPoint,
+                        selected: widget.selected,
+                        destinations: widget.destinations,
+                        movable: widget.movable,
+                        threatened: widget.threatened,
+                        hint: widget.hint,
+                        placementTargets: widget.showPlacementTargets
+                            ? {
+                                for (var i = 0; i < Board.pointCount; i++)
+                                  if (!widget.pieces.any((p) => p.point == i)) i,
+                              }
+                            : const {},
                       ),
                     ),
-                for (final piece in widget.pieces)
-                  AnimatedPositioned(
-                    key: ValueKey(piece.id),
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeInOutCubic,
-                    left: geo.point(piece.point).dx - r,
-                    top: geo.point(piece.point).dy - r,
-                    width: r * 2,
-                    height: r * 2,
-                    child: IgnorePointer(
-                      child: ExcludeSemantics(
-                        child: PieceToken(
-                          isTiger: piece.isTiger,
-                          lifted: piece.point == widget.selected,
+                  ),
+                  if (last != null && last.isCapture)
+                    _CaptureBurst(
+                      key: ValueKey('burst${widget.moveNumber}'),
+                      center: geo.point(last.captured),
+                      radius: r,
+                    ),
+                  if (widget.pointLabel != null)
+                    for (var i = 0; i < Board.pointCount; i++)
+                      Positioned(
+                        left: geo.point(i).dx - r,
+                        top: geo.point(i).dy - r,
+                        width: r * 2,
+                        height: r * 2,
+                        child: Semantics(
+                          button: true,
+                          label: widget.pointLabel!(i),
+                          onTap: widget.onTapPoint == null ? null : () => widget.onTapPoint!(i),
                         ),
                       ),
+                  for (final piece in widget.pieces)
+                    _BoardPiece(
+                      key: ValueKey(piece.id),
+                      piece: piece,
+                      geo: geo,
+                      lifted: piece.point == widget.selected,
+                      leaping: last != null &&
+                          last.isCapture &&
+                          last.to == piece.point &&
+                          piece.isTiger,
+                      // Tigers drop in one by one as a new game is laid out.
+                      entryDelay: piece.isTiger && widget.moveNumber == 0
+                          ? Duration(milliseconds: 350 + 160 * tigers.indexOf(piece.id))
+                          : Duration.zero,
+                      reduceMotion: _reduceMotion,
+                      reject: piece.point == widget.rejectPiece ? _reject : null,
+                      dance: widget.celebrate != null &&
+                              (widget.celebrate == Side.tiger) == piece.isTiger
+                          ? _dance
+                          : null,
+                      dancePhase: (piece.point % 5) / 5,
+                      dimmed: widget.gameOver &&
+                          widget.celebrate != null &&
+                          (widget.celebrate == Side.tiger) != piece.isTiger,
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -192,25 +310,192 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
   }
 }
 
+/// A piece on the board. It slides along a line for a step, leaps in an arc
+/// over a captured goat, drops in when placed, and shakes on a wrong tap.
+class _BoardPiece extends StatefulWidget {
+  final Piece piece;
+  final BoardGeometry geo;
+  final bool lifted;
+  final bool leaping;
+  final Duration entryDelay;
+  final bool reduceMotion;
+  final Animation<double>? reject;
+  final Animation<double>? dance;
+  final double dancePhase;
+  final bool dimmed;
+
+  const _BoardPiece({
+    super.key,
+    required this.piece,
+    required this.geo,
+    required this.lifted,
+    required this.leaping,
+    required this.entryDelay,
+    required this.reduceMotion,
+    required this.reject,
+    required this.dance,
+    required this.dancePhase,
+    required this.dimmed,
+  });
+
+  @override
+  State<_BoardPiece> createState() => _BoardPieceState();
+}
+
+class _BoardPieceState extends State<_BoardPiece> with TickerProviderStateMixin {
+  late int _from = widget.piece.point;
+  late int _to = widget.piece.point;
+  bool _leap = false;
+
+  late final AnimationController _move = AnimationController(vsync: this, value: 1);
+  late final AnimationController _enter = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.reduceMotion) {
+      _enter.value = 1;
+    } else if (widget.entryDelay == Duration.zero) {
+      _enter.forward();
+    } else {
+      Future<void>.delayed(widget.entryDelay, () {
+        if (mounted) _enter.forward();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(_BoardPiece old) {
+    super.didUpdateWidget(old);
+    // Pieces are moved in place, so compare with where this one was headed.
+    final point = widget.piece.point;
+    if (point != _to) {
+      _from = _to;
+      _to = point;
+      _leap = widget.leaping;
+      _move.duration = widget.reduceMotion
+          ? const Duration(milliseconds: 1)
+          : _leap
+              ? jumpDuration
+              : _stepDuration;
+      _move.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _move.dispose();
+    _enter.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final geo = widget.geo;
+    final r = geo.pieceRadius;
+    final reject = widget.reject;
+    final dance = widget.dance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([_move, _enter, if (reject != null) reject, if (dance != null) dance]),
+      builder: (context, child) {
+        final raw = _move.value;
+        final t = (_leap ? Curves.easeInOutSine : Curves.easeInOutCubic).transform(raw);
+        final ground = Offset.lerp(geo.point(_from), geo.point(_to), t)!;
+
+        // Height above the board, in pixels.
+        var lift = 0.0;
+        var scale = 1.0;
+        if (_leap && raw < 1) {
+          final arc = math.sin(math.pi * raw);
+          lift = arc * (geo.point(_to) - geo.point(_from)).distance * 0.32;
+          scale = 1 + 0.22 * arc;
+        }
+
+        // Dropping in when placed: fall from above and bounce.
+        final e = _enter.value;
+        lift += (1 - Curves.bounceOut.transform(e)) * r * 2.4;
+        final opacity = (e * 5).clamp(0.0, 1.0);
+
+        var dx = 0.0;
+        if (reject != null && reject.value > 0 && reject.value < 1) {
+          final v = reject.value;
+          dx = math.sin(v * math.pi * 6) * (1 - v) * r * 0.4;
+        }
+
+        if (dance != null) {
+          final hop = math.sin(2 * math.pi * (dance.value + widget.dancePhase));
+          lift += math.max(0, hop) * r * 0.55;
+          scale *= 1 + math.max(0, hop) * 0.06;
+        }
+
+        final shadowAlpha = (lift / (r * 3)).clamp(0.0, 1.0);
+        return Positioned(
+          left: ground.dx - r,
+          top: ground.dy - r,
+          width: r * 2,
+          height: r * 2,
+          child: IgnorePointer(
+            child: ExcludeSemantics(
+              child: Opacity(
+                opacity: opacity * (widget.dimmed ? 0.5 : 1),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    if (lift > 0.5)
+                      // Shadow left on the board while the piece is in the air.
+                      Positioned.fill(
+                        child: Transform.scale(
+                          scaleX: 1 - 0.3 * shadowAlpha,
+                          scaleY: 0.45 * (1 - 0.3 * shadowAlpha),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.black.withValues(alpha: 0.35 * (1 - shadowAlpha * 0.5)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned.fill(
+                      child: Transform.translate(
+                        offset: Offset(dx, -lift),
+                        child: Transform.scale(scale: scale, child: child),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      child: PieceToken(isTiger: widget.piece.isTiger, lifted: widget.lifted, animateIn: false),
+    );
+  }
+}
+
 /// A round playing piece: a tiger or a goat.
 class PieceToken extends StatelessWidget {
   final bool isTiger;
   final bool lifted;
-  const PieceToken({super.key, required this.isTiger, this.lifted = false});
+
+  /// Whether the token pops in when first shown.
+  final bool animateIn;
+
+  const PieceToken({super.key, required this.isTiger, this.lifted = false, this.animateIn = true});
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.2, end: 1),
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.elasticOut,
-      builder: (context, scale, child) => Transform.scale(
-        scale: scale * (lifted ? 1.12 : 1),
-        child: child,
-      ),
+    final token = AnimatedScale(
+      scale: lifted ? 1.14 : 1,
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutBack,
       child: LayoutBuilder(builder: (context, c) {
         final d = c.biggest.shortestSide;
-        return DecoratedBox(
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
@@ -242,18 +527,31 @@ class PieceToken extends StatelessWidget {
         );
       }),
     );
+    if (!animateIn) return token;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.2, end: 1),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.elasticOut,
+      builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+      child: token,
+    );
   }
 }
 
-/// A goat being snatched: it fades and a red ring bursts outwards.
+/// A goat being snatched. It stands until the leaping tiger is over it,
+/// then is tossed up and fades while a red ring and dust burst outwards.
 class _CaptureBurst extends StatelessWidget {
   final Offset center;
   final double radius;
   const _CaptureBurst({super.key, required this.center, required this.radius});
 
+  static const _total = Duration(milliseconds: 1100);
+
   @override
   Widget build(BuildContext context) {
-    final size = radius * 5;
+    final size = radius * 6;
+    // The fraction of [_total] at which the tiger is over the goat.
+    final hit = jumpDuration.inMilliseconds / 2 / _total.inMilliseconds;
     return Positioned(
       left: center.dx - size / 2,
       top: center.dy - size / 2,
@@ -262,35 +560,61 @@ class _CaptureBurst extends StatelessWidget {
       child: IgnorePointer(
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: 1),
-          duration: const Duration(milliseconds: 750),
-          curve: Curves.easeOut,
-          builder: (context, t, _) => Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: radius * 2 * (1 + t * 1.4),
-                height: radius * 2 * (1 + t * 1.4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.kumkum.withValues(alpha: 1 - t),
-                    width: radius * 0.3 * (1 - t) + 1,
+          duration: _total,
+          builder: (context, raw, _) {
+            final t = Curves.easeOut.transform(((raw - hit) / (1 - hit)).clamp(0.0, 1.0));
+            final started = raw >= hit;
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                if (started) ...[
+                  Container(
+                    width: radius * 2 * (1 + t * 1.6),
+                    height: radius * 2 * (1 + t * 1.6),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.kumkum.withValues(alpha: 1 - t),
+                        width: radius * 0.3 * (1 - t) + 1,
+                      ),
+                    ),
+                  ),
+                  // Puffs of dust thrown out from the impact.
+                  for (var i = 0; i < 8; i++)
+                    Transform.translate(
+                      offset: Offset.fromDirection(
+                        i * math.pi / 4 + 0.3,
+                        radius * (0.6 + 1.9 * t),
+                      ),
+                      child: Container(
+                        width: radius * 0.32 * (1 - t) + 1,
+                        height: radius * 0.32 * (1 - t) + 1,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: (i.isEven ? AppColors.chalk : AppColors.turmeric)
+                              .withValues(alpha: (1 - t) * 0.9),
+                        ),
+                      ),
+                    ),
+                ],
+                Opacity(
+                  opacity: (1 - t * 1.3).clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    // Knocked up and away, spinning.
+                    offset: Offset(radius * 0.9 * t, -radius * 2.2 * t + radius * 1.4 * t * t),
+                    child: Transform.rotate(
+                      angle: t * math.pi * 0.9,
+                      child: SizedBox(
+                        width: radius * 2,
+                        height: radius * 2,
+                        child: const PieceToken(isTiger: false, animateIn: false),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              Opacity(
-                opacity: (1 - t * 1.4).clamp(0.0, 1.0),
-                child: Transform.translate(
-                  offset: Offset(0, -radius * 1.2 * t),
-                  child: SizedBox(
-                    width: radius * 2,
-                    height: radius * 2,
-                    child: const PieceToken(isTiger: false),
-                  ),
-                ),
-              ),
-            ],
-          ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -302,7 +626,10 @@ class _BoardPainter extends CustomPainter {
   final Move? lastMove;
   final List<(int, int)> arrows;
 
-  _BoardPainter(this.geo, this.lastMove, this.arrows);
+  /// 0 to 1 as the chalk lines are drawn in.
+  final Animation<double> reveal;
+
+  _BoardPainter(this.geo, this.lastMove, this.arrows, this.reveal) : super(repaint: reveal);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -347,9 +674,15 @@ class _BoardPainter extends CustomPainter {
       ..color = AppColors.chalk.withValues(alpha: 0.92)
       ..strokeWidth = geo.unit * 0.011
       ..strokeCap = StrokeCap.round;
-    for (final l in Board.lines) {
+    final shown = Curves.easeOutCubic.transform(reveal.value);
+    for (var i = 0; i < Board.lines.length; i++) {
+      final l = Board.lines[i];
+      // Each line starts a little after the one before.
+      final stagger = i / Board.lines.length * 0.5;
+      final f = ((shown - stagger) / 0.5).clamp(0.0, 1.0);
+      if (f == 0) continue;
       final a = geo.point(l.first);
-      final b = geo.point(l.last);
+      final b = Offset.lerp(a, geo.point(l.last), f)!;
       canvas.drawLine(a, b, halo);
       canvas.drawLine(a, b, line);
     }
@@ -370,7 +703,7 @@ class _BoardPainter extends CustomPainter {
     }
 
     // Points.
-    final pointPaint = Paint()..color = AppColors.chalk;
+    final pointPaint = Paint()..color = AppColors.chalk.withValues(alpha: shown);
     for (var i = 0; i < Board.pointCount; i++) {
       canvas.drawCircle(geo.point(i), geo.unit * 0.02, pointPaint);
     }
@@ -415,12 +748,17 @@ class _BoardPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BoardPainter old) =>
-      old.geo.unit != geo.unit || old.lastMove != lastMove || old.arrows != arrows;
+      old.geo.unit != geo.unit ||
+      old.lastMove != lastMove ||
+      old.arrows != arrows ||
+      old.reveal != reveal;
 }
 
 class _HighlightPainter extends CustomPainter {
   final BoardGeometry geo;
   final Animation<double> pulse;
+  final Animation<double> reject;
+  final int? rejectPoint;
   final int? selected;
   final List<Move> destinations;
   final Set<int> movable;
@@ -431,13 +769,15 @@ class _HighlightPainter extends CustomPainter {
   _HighlightPainter({
     required this.geo,
     required this.pulse,
+    required this.reject,
+    required this.rejectPoint,
     required this.selected,
     required this.destinations,
     required this.movable,
     required this.threatened,
     required this.placementTargets,
     required this.hint,
-  }) : super(repaint: pulse);
+  }) : super(repaint: Listenable.merge([pulse, reject]));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -496,6 +836,22 @@ class _HighlightPainter extends CustomPainter {
       if (!h.isPlacement) canvas.drawCircle(geo.point(h.from), r * 1.3, hp);
       canvas.drawCircle(geo.point(h.to), r * (0.7 + 0.2 * t), hp);
       canvas.drawCircle(geo.point(h.to), r * 0.3, Paint()..color = AppColors.hint);
+    }
+
+    // A wrong tap: a red cross that flashes and fades.
+    final rp = rejectPoint;
+    final rv = reject.value;
+    if (rp != null && rv > 0 && rv < 1) {
+      final c = geo.point(rp);
+      final a = (1 - rv) * 0.9;
+      final size = r * (0.45 + 0.15 * rv);
+      final cross = Paint()
+        ..color = AppColors.kumkum.withValues(alpha: a)
+        ..strokeWidth = r * 0.18
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(c + Offset(-size, -size), c + Offset(size, size), cross);
+      canvas.drawLine(c + Offset(size, -size), c + Offset(-size, size), cross);
+      canvas.drawCircle(c, r * (0.9 + 0.4 * rv), ring(AppColors.kumkum, r * 0.1, a * 0.7));
     }
   }
 

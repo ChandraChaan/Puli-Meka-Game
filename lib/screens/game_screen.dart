@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'dart:math' as math;
 
+import 'package:flutter/material.dart';
+
+import '../feedback.dart';
 import '../game/game_controller.dart';
 import '../game/puli_meka.dart';
 import '../l10n.dart';
@@ -22,11 +24,21 @@ class _GameScreenState extends State<GameScreen> {
   GameController get c => widget.controller;
   bool _showResult = false;
 
+  int? _rejectPoint;
+  int? _rejectPiece;
+  int _rejectSerial = 0;
+
+  /// A short message shown over the board, such as a change of phase.
+  String? _banner;
+  int _bannerSerial = 0;
+
   @override
   void initState() {
     super.initState();
     c.onMove = _feedback;
     c.onGameOver = _gameOver;
+    c.onSelect = (_) => _play(GameSound.select);
+    c.onInvalidTap = _invalidTap;
     c.addListener(_onChange);
     c.start();
   }
@@ -43,14 +55,43 @@ class _GameScreenState extends State<GameScreen> {
     setState(() {});
   }
 
+  void _play(GameSound sound) {
+    final settings = SettingsScope.read(context);
+    GameFeedback.instance.play(sound, sound: settings.sound, vibrate: settings.vibration);
+  }
+
+  void _invalidTap(int point) {
+    _play(GameSound.invalid);
+    setState(() {
+      _rejectPoint = point;
+      // Shake the piece tapped, or the one in hand if the spot was empty.
+      _rejectPiece = c.game.board[point] != Cell.empty ? point : c.selected;
+      _rejectSerial++;
+    });
+  }
+
+  void _showBanner(String text) {
+    setState(() {
+      _banner = text;
+      _bannerSerial++;
+    });
+  }
+
   void _feedback(Move m) {
-    if (!SettingsScope.read(context).sound) return;
-    if (m.isCapture) {
-      HapticFeedback.heavyImpact();
-    } else {
-      HapticFeedback.selectionClick();
+    _play(m.isPlacement
+        ? GameSound.place
+        : m.isCapture
+            ? GameSound.capture
+            : GameSound.move);
+    final s = SettingsScope.read(context).s;
+    final game = c.game;
+    if (m.isPlacement && !game.isPlacementPhase && c.result == null) {
+      _showBanner(s.allGoatsPlaced);
+    } else if (m.isCapture &&
+        c.result == null &&
+        game.goatsCaptured == game.captureTarget - 1) {
+      _showBanner(s.oneMoreCapture);
     }
-    SystemSound.play(SystemSoundType.click);
   }
 
   void _gameOver(GameResult result) {
@@ -62,8 +103,22 @@ class _GameScreenState extends State<GameScreen> {
         outcome: result.outcome,
       );
     }
-    if (settings.sound) HapticFeedback.mediumImpact();
-    setState(() => _showResult = true);
+    final winner = result.winner;
+    final GameSound sound;
+    if (winner == null) {
+      sound = GameSound.draw;
+    } else if (c.mode == GameMode.vsComputer && winner != c.humanSide) {
+      sound = GameSound.lose;
+    } else {
+      sound = GameSound.win;
+    }
+    // Let the last move land and the winners celebrate before the result card.
+    final lastWasCapture = c.lastMove?.isCapture ?? false;
+    Future<void>.delayed(Duration(milliseconds: lastWasCapture ? 1300 : 900), () {
+      if (!mounted || c.result != result) return;
+      _play(sound);
+      setState(() => _showResult = true);
+    });
   }
 
   Future<bool> _confirm(String title, String yes) async {
@@ -144,6 +199,12 @@ class _GameScreenState extends State<GameScreen> {
                     ],
                   );
                 }),
+                if (_banner != null)
+                  _Banner(
+                    key: ValueKey(_bannerSerial),
+                    text: _banner!,
+                    onDone: () => setState(() => _banner = null),
+                  ),
                 if (result != null && _showResult) ...[
                   _ResultOverlay(
                     s: s,
@@ -176,6 +237,11 @@ class _GameScreenState extends State<GameScreen> {
       hint: c.hint,
       showPlacementTargets: placing,
       moveNumber: c.history.length,
+      rejectPoint: _rejectPoint,
+      rejectPiece: _rejectPiece,
+      rejectSerial: _rejectSerial,
+      celebrate: c.result?.winner,
+      gameOver: c.isOver,
       onTapPoint: c.tapPoint,
       pointLabel: (p) => SettingsScope.of(context).s.pointLabel(p, c.game.board[p]),
     );
@@ -251,12 +317,18 @@ class _GameScreenState extends State<GameScreen> {
                   for (var i = 0; i < game.captureTarget; i++)
                     Padding(
                       padding: const EdgeInsets.only(right: 4),
-                      child: Icon(
-                        i < game.goatsCaptured ? Icons.circle : Icons.circle_outlined,
-                        size: 12,
-                        color: i < game.goatsCaptured
-                            ? AppColors.kumkum
-                            : AppColors.chalk.withValues(alpha: 0.5),
+                      child: _Pop(
+                        key: ValueKey('cap$i${i < game.goatsCaptured}'),
+                        // Wait for the tiger to land before the tally fills.
+                        delay: i < game.goatsCaptured ? jumpDuration : Duration.zero,
+                        enabled: i < game.goatsCaptured,
+                        child: Icon(
+                          i < game.goatsCaptured ? Icons.circle : Icons.circle_outlined,
+                          size: 12,
+                          color: i < game.goatsCaptured
+                              ? AppColors.kumkum
+                              : AppColors.chalk.withValues(alpha: 0.5),
+                        ),
                       ),
                     ),
                   if (trappedTigers > 0) ...[
@@ -329,9 +401,29 @@ class _GameScreenState extends State<GameScreen> {
             const SizedBox(width: 8),
           ],
           Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+            child: AnimatedSwitcher(
+              // The old text leaves quickly; the new one arrives after it,
+              // so the two never overlap.
+              duration: const Duration(milliseconds: 320),
+              reverseDuration: const Duration(milliseconds: 90),
+              switchInCurve: const Interval(0.3, 1, curve: Curves.easeOut),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween(begin: const Offset(0, 0.4), end: Offset.zero)
+                      .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+                  child: child,
+                ),
+              ),
+              layoutBuilder: (current, previous) => Stack(
+                alignment: Alignment.centerLeft,
+                children: [...previous, if (current != null) current],
+              ),
+              child: Text(
+                text,
+                key: ValueKey(text),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
           ),
         ],
@@ -468,17 +560,22 @@ class _GoatTally extends StatelessWidget {
       runSpacing: 3,
       children: [
         for (var i = 0; i < PuliMekaGame.totalGoats; i++)
-          Container(
-            width: 9,
-            height: 9,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: i < game.goatsCaptured
-                  ? AppColors.kumkum
-                  : i < game.goatsPlaced
-                      ? AppColors.goatCream
-                      : Colors.transparent,
-              border: Border.all(color: AppColors.chalk.withValues(alpha: 0.6), width: 1),
+          _Pop(
+            key: ValueKey('goat$i${i < game.goatsCaptured}${i < game.goatsPlaced}'),
+            enabled: i < game.goatsPlaced,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: i < game.goatsCaptured
+                    ? AppColors.kumkum
+                    : i < game.goatsPlaced
+                        ? AppColors.goatCream
+                        : Colors.transparent,
+                border: Border.all(color: AppColors.chalk.withValues(alpha: 0.6), width: 1),
+              ),
             ),
           ),
       ],
@@ -629,6 +726,85 @@ class _ResultOverlay extends StatelessWidget {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pops its child in with a little overshoot when it first appears.
+class _Pop extends StatelessWidget {
+  final Widget child;
+  final bool enabled;
+  final Duration delay;
+  const _Pop({super.key, required this.child, this.enabled = true, this.delay = Duration.zero});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!enabled) return child;
+    final total = delay + const Duration(milliseconds: 420);
+    final start = delay.inMilliseconds / total.inMilliseconds;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: total,
+      builder: (context, raw, child) {
+        final t = ((raw - start) / (1 - start)).clamp(0.0, 1.0);
+        // Grows past full size, then settles.
+        final scale = t == 0 ? 1.0 : 1 + 0.9 * math.sin(math.pi * t) * (1 - t);
+        return Transform.scale(scale: scale, child: child);
+      },
+      child: child,
+    );
+  }
+}
+
+/// A message that drops over the board for a moment, then leaves.
+class _Banner extends StatelessWidget {
+  final String text;
+  final VoidCallback onDone;
+  const _Banner({super.key, required this.text, required this.onDone});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Center(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 2000),
+            onEnd: onDone,
+            builder: (context, t, child) {
+              // In for the first 15%, hold, then out over the last 15%.
+              final inT = Curves.easeOutBack.transform((t / 0.15).clamp(0.0, 1.0));
+              final outT = Curves.easeIn.transform(((t - 0.85) / 0.15).clamp(0.0, 1.0));
+              return Opacity(
+                opacity: (inT * (1 - outT)).clamp(0.0, 1.0),
+                child: Transform.translate(
+                  offset: Offset(0, -30 * (1 - inT) - 20 * outT),
+                  child: Transform.scale(scale: 0.85 + 0.15 * inT, child: child),
+                ),
+              );
+            },
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.redOxideDark.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.turmeric, width: 2),
+                boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 24)],
+              ),
+              child: Text(
+                text,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.turmeric,
+                ),
+              ),
+            ),
           ),
         ),
       ),

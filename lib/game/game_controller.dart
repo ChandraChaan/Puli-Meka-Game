@@ -46,6 +46,12 @@ class GameController extends ChangeNotifier {
   /// Called after every move, for sounds and vibration.
   void Function(Move move)? onMove;
 
+  /// Called when the player picks up a piece.
+  void Function(int point)? onSelect;
+
+  /// Called when the player taps somewhere they cannot play.
+  void Function(int point)? onInvalidTap;
+
   /// Called once when the game ends.
   void Function(GameResult result)? onGameOver;
 
@@ -141,7 +147,12 @@ class GameController extends ChangeNotifier {
     final cell = game.board[point];
 
     if (game.turn == Side.goat && game.isPlacementPhase) {
-      if (cell == Cell.empty) _play(Move.place(point));
+      if (cell == Cell.empty) {
+        _play(Move.place(point));
+      } else {
+        onInvalidTap?.call(point);
+        notifyListeners();
+      }
       return;
     }
 
@@ -157,8 +168,15 @@ class GameController extends ChangeNotifier {
     final own = game.turn == Side.goat ? Cell.goat : Cell.tiger;
     if (cell == own && game.movesFrom(point).isNotEmpty && point != s) {
       selected = point;
-    } else {
+      onSelect?.call(point);
+    } else if (point == s) {
+      // Tapping the picked-up piece again puts it down.
       selected = null;
+    } else {
+      onInvalidTap?.call(point);
+      // Keep the piece in hand after a miss on an empty point, so the player
+      // can try another spot.
+      if (cell != Cell.empty) selected = null;
     }
     notifyListeners();
   }

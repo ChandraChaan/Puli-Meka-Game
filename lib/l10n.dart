@@ -22,7 +22,8 @@ class S {
   String get stats => _('Statistics', 'గణాంకాలు');
   String get settings => _('Settings', 'సెట్టింగ్‌లు');
   String get language => _('Language', 'భాష');
-  String get soundVibration => _('Sound & vibration', 'శబ్దం & వైబ్రేషన్');
+  String get soundEffects => _('Sound effects', 'శబ్ద ప్రభావాలు');
+  String get vibration => _('Vibration', 'వైబ్రేషన్');
   String get captureTargetTitle => _('Goats tigers must capture', 'పులులు పట్టాల్సిన మేకలు');
   String get captureTargetSub =>
       _('Fewer makes it easier for the tigers', 'తక్కువైతే పులులకు సులభం');
@@ -58,6 +59,10 @@ class S {
   String get thinking => _('Computer is thinking…', 'కంప్యూటర్ ఆలోచిస్తోంది…');
   String turnOf(String who) => _("$who's turn", '$who వంతు');
   String get yourTurn => _('Your turn', 'మీ వంతు');
+  String get allGoatsPlaced =>
+      _('All 15 goats are out!\nNow move them along the lines', 'మొత్తం 15 మేకలు బయటకొచ్చాయి!\nఇప్పుడు గీతల వెంబడి కదపండి');
+  String get oneMoreCapture =>
+      _('One more capture and the tigers win!', 'ఇంకొక్క మేకను పడితే పులులు గెలుస్తాయి!');
 
   String pointLabel(int point, int cell) {
     final what = switch (cell) {

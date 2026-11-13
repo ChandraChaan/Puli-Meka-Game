@@ -37,6 +37,7 @@ class AppSettings extends ChangeNotifier {
 
   bool telugu;
   bool sound;
+  bool vibration;
   int captureTarget;
   Side lastSide;
   Difficulty lastDifficulty;
@@ -45,6 +46,8 @@ class AppSettings extends ChangeNotifier {
   AppSettings._(this._prefs)
       : telugu = _prefs?.getBool('telugu') ?? false,
         sound = _prefs?.getBool('sound') ?? true,
+        // Older versions had one switch for both; carry it over.
+        vibration = _prefs?.getBool('vibration') ?? _prefs?.getBool('sound') ?? true,
         captureTarget = _prefs?.getInt('captureTarget') ?? PuliMekaGame.defaultCaptureTarget,
         lastSide = Side.values[_prefs?.getInt('lastSide') ?? 0],
         lastDifficulty = Difficulty.values[_prefs?.getInt('lastDifficulty') ?? 1],
@@ -85,6 +88,12 @@ class AppSettings extends ChangeNotifier {
   void setSound(bool value) {
     sound = value;
     _prefs?.setBool('sound', value);
+    notifyListeners();
+  }
+
+  void setVibration(bool value) {
+    vibration = value;
+    _prefs?.setBool('vibration', value);
     notifyListeners();
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_settings.dart';
+import '../feedback.dart';
 import '../game/ai.dart';
 import '../game/game_controller.dart';
 import '../game/puli_meka.dart';
@@ -492,9 +493,23 @@ Future<void> showSettingsSheet(BuildContext context) {
               const SizedBox(height: 8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(s.soundVibration, style: const TextStyle(fontWeight: FontWeight.w700)),
+                secondary: const Icon(Icons.volume_up_rounded),
+                title: Text(s.soundEffects, style: const TextStyle(fontWeight: FontWeight.w700)),
                 value: settings.sound,
-                onChanged: settings.setSound,
+                onChanged: (v) {
+                  settings.setSound(v);
+                  if (v) GameFeedback.instance.play(GameSound.place, sound: true, vibrate: false);
+                },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.vibration_rounded),
+                title: Text(s.vibration, style: const TextStyle(fontWeight: FontWeight.w700)),
+                value: settings.vibration,
+                onChanged: (v) {
+                  settings.setVibration(v);
+                  if (v) GameFeedback.instance.play(GameSound.place, sound: false, vibrate: true);
+                },
               ),
               Text(s.captureTargetTitle, style: const TextStyle(fontWeight: FontWeight.w700)),
               Text(s.captureTargetSub,
